@@ -1,0 +1,18 @@
+{
+  "scripts": {
+    "build": "rm -rf build && tsc",
+    "run": "npm run build && node build/index.js"
+  },
+  "devDependencies": {
+    "@types/cli-table2": "^0.2.1",
+    "@types/lodash": "^4.14.102",
+    "@types/node": "^8.0.7",
+    "@types/yargs": "^11.0.0",
+    "typescript": "^2.8.1"
+  },
+  "dependencies": {
+    "cli-table2": "^0.2.0",
+    "lodash": "^4.14.2",
+    "yargs": "^11.0.0"
+  }
+}

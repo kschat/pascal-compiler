@@ -1,0 +1,3 @@
+interface IntermediateCode { }
+
+export { IntermediateCode };
