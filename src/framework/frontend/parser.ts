@@ -1,10 +1,10 @@
 import { MessageEmitter, MessageHandler, MessageListener, MessageTypes } from '../message/message-emitter';
-import { SymbolTable, IntermediateCode } from '../intermediate';
+import { SymbolTableStack, IntermediateCode, createSymbolTableStack } from '../intermediate';
 import { Scanner } from './scanner';
 import { Token } from './token';
 
 export abstract class Parser<T extends Token = Token> implements MessageEmitter {
-  protected static _symbolTable?: SymbolTable = undefined;
+  protected static _symbolTableStack?: SymbolTableStack = createSymbolTableStack();
   protected _messageHandler: MessageHandler = new MessageHandler();
   protected _intermediateCode?: IntermediateCode = undefined;
 
@@ -14,8 +14,8 @@ export abstract class Parser<T extends Token = Token> implements MessageEmitter 
     return this._intermediateCode;
   }
 
-  public get symbolTable(): SymbolTable | undefined {
-    return Parser._symbolTable;
+  public get symbolTableStack(): SymbolTableStack | undefined {
+    return Parser._symbolTableStack;
   }
 
   public abstract async parse(): Promise<void>;

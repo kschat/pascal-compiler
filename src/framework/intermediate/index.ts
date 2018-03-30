@@ -1,2 +1,2 @@
-export { SymbolTable } from './symbol-table';
-export { IntermediateCode } from './intermediate-code';
+export * from './symbol-table';
+export * from './intermediate-code';
