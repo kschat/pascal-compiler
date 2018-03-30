@@ -1,20 +1,19 @@
 import { Source } from './source';
 
-export class Token<T = string, V = undefined> {
+export class Token<T = string, V = {}> {
   protected _type: T;
   protected _text: string;
-  protected _value?: V;
+  protected _value: V;
   public readonly lineNumber: number = this._source.lineNumber;
   public readonly position: number = this._source.currentPosition;
 
   constructor(protected _source: Source) { }
 
-  public async init(): Promise<this> {
-    await this.extract();
-    return this;
+  public async build(): Promise<this> {
+    return await this._extract();
   }
 
-  public get value(): V | undefined {
+  public get value(): V {
     return this._value;
   }
 
@@ -26,10 +25,14 @@ export class Token<T = string, V = undefined> {
     return this._type;
   }
 
-  protected async extract(): Promise<void> {
+  public get source (): Source {
+    return this._source;
+  }
+
+  protected async _extract(): Promise<this> {
     this._text = await this._currentCharacter();
-    this._value = undefined;
-    this._nextCharacter();
+    await this._nextCharacter();
+    return this;
   }
 
   protected async _currentCharacter(): Promise<string> {

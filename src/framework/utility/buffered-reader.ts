@@ -5,7 +5,6 @@ export class BufferedReader {
   private static readonly BUFFER_SIZE: number = 10;
 
   private _reader: ReadLine;
-  private _currentLine?: string = undefined;
   private _bufferedLines: string[] = [];
   private _closed: boolean = false;
 

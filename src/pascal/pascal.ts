@@ -11,7 +11,15 @@ import { IntermediateCode, SymbolTable } from '../framework/intermediate';
 import { BufferedReader } from '../framework/utility';
 import { createParser, ParserLanguage, ParserType } from './frontend/frontend-factory';
 import { MessageType, MessageTypes } from '../framework/message/message-emitter';
-import { ParserSummaryMessage, InterpreterSummaryMessage, CompilerSummaryMessage, SourceLineMessage } from '../framework/message/messages';
+import { SyntaxErrorMessage } from '../framework/message/messages';
+
+import { 
+  ParserSummaryMessage, 
+  InterpreterSummaryMessage, 
+  CompilerSummaryMessage, 
+  SourceLineMessage, 
+  TokenMessage 
+} from '../framework/message/messages';
 
 const TABLE_CONFIG: Table.TableConstructorOptions = {
   chars: {
@@ -85,6 +93,33 @@ const formatSourceLine = (message: SourceLineMessage) => {
   return String(table);
 };
 
+const formatToken = (message: TokenMessage) => {
+  const config = merge({}, TABLE_CONFIG, { colWidths: [15, null] });
+  const table = new Table(config) as Table.HorizontalTable;
+  table.push([
+    `>>> ${message.tokenType}`, 
+    `line=${message.lineNumber}, pos=${message.position}, text=${message.text}`
+  ]);
+
+  if (message.value) {
+    table.push(['>>>', `value=${message.value}`]);
+  }
+
+  return String(table);
+};
+
+const formatSyntaxError = (message: SyntaxErrorMessage) => {
+  const text = message.text ? `[at "${message.text}"]` : '';
+  const config = merge({}, TABLE_CONFIG, { colWidths: [4, null] });
+  const table = new Table(config) as Table.HorizontalTable;
+  table.push(
+    ['', `${'-'.repeat(Math.max(message.position - 1, 0))}^`],
+    ['***', `${message.errorMessage} ${text}`]
+  );
+
+  return String(table);
+};
+
 interface PascalFlags {
   readonly intermediate: boolean;
   readonly crossReference: boolean;
@@ -129,6 +164,12 @@ class Pascal {
 
       case MessageType.CompilerSummary:
         return console.log(formatCompilerSummary(message));
+      
+      case MessageType.Token:
+        return console.log(formatToken(message));
+
+      case MessageType.SyntaxError:
+        return console.log(formatSyntaxError(message));
     }
   }
 }

@@ -23,10 +23,6 @@ export interface SourceLineMessage extends Message<MessageType.SourceLine> {
   line: string;
 }
 
-export interface SyntaxErrorMessage extends Message<MessageType.SyntaxError> {
-  bar: number;
-}
-
 export interface ParserSummaryMessage extends Message<MessageType.ParserSummary> {
   lineNumber: number;
   errorCount: number;
@@ -44,8 +40,25 @@ export interface InterpreterSummaryMessage extends Message<MessageType.Interpret
   elapsedMilliseconds: number;
 }
 
+export interface TokenMessage extends Message<MessageType.Token> {
+  lineNumber: number;
+  position: number;
+  tokenType: string;
+  text: string;
+  value?: {};
+}
+
+export interface SyntaxErrorMessage extends Message<MessageType.SyntaxError> {
+  lineNumber: number;
+  position: number;
+  text: string;
+  errorMessage: string;
+}
+
 export type MessageTypes = SourceLineMessage
   | SyntaxErrorMessage
   | ParserSummaryMessage
   | CompilerSummaryMessage
-  | InterpreterSummaryMessage;
+  | InterpreterSummaryMessage
+  | TokenMessage
+  | SyntaxErrorMessage;

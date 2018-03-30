@@ -3,7 +3,7 @@ import { SymbolTable, IntermediateCode } from '../intermediate';
 import { Scanner } from './scanner';
 import { Token } from './token';
 
-abstract class Parser<T extends Token = Token> implements MessageEmitter {
+export abstract class Parser<T extends Token = Token> implements MessageEmitter {
   protected static _symbolTable?: SymbolTable = undefined;
   protected _messageHandler: MessageHandler = new MessageHandler();
   protected _intermediateCode?: IntermediateCode = undefined;
@@ -42,5 +42,3 @@ abstract class Parser<T extends Token = Token> implements MessageEmitter {
     this._messageHandler.sendMessage(message);
   }
 }
-
-export { Parser };
