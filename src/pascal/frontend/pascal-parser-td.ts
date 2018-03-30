@@ -14,11 +14,11 @@ export class PascalParserTd extends Parser<PascalToken> {
     this._TIMER.start();
 
     let token: PascalToken;
-    while (!((token = await this._tryNextToken()) instanceof EofToken)) { 
+    while (!((token = await this._tryNextToken()) instanceof EofToken)) {
       const tokenType = token.type;
       if (token instanceof PascalErrorToken) {
         this._ERROR_HANDLER.flag(
-          token, 
+          token,
           token.value,
           this
         );

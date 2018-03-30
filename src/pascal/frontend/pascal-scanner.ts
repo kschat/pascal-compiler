@@ -1,12 +1,15 @@
 import { Scanner, Source } from '../../framework/frontend';
-import { PascalErrorToken } from './tokens';
 import { InvalidCharacterError } from './errors';
-import { 
-  LETTER, 
-  PascalWordToken, 
-  PascalToken, 
-  EofToken, 
-  PascalStringToken 
+import { SYMBOLS } from './token-type';
+
+import {
+  LETTER,
+  PascalWordToken,
+  PascalToken,
+  EofToken,
+  PascalStringToken,
+  PascalErrorToken,
+  PascalSymbolToken
 } from './tokens';
 
 const WHITESPACE = /\s/;
@@ -24,10 +27,13 @@ export class PascalScanner extends Scanner<PascalToken> {
     else if (currentCharacter === '\'') {
       return await new PascalStringToken(this._source).build();
     }
+    else if (SYMBOLS.find((v) => v.startsWith(currentCharacter))) {
+      return await new PascalSymbolToken(this._source).build();
+    }
 
     await this.nextCharacter();
     return await new PascalErrorToken(
-      this._source, 
+      this._source,
       new InvalidCharacterError(),
       currentCharacter
     ).build();

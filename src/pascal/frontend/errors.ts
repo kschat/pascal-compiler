@@ -4,8 +4,8 @@ type ConstructorFunction<T = {}> = new (...args: any[]) => T;
 
 export class PascalError extends Error {
   constructor (
-    public message: string, 
-    public status: number = 0, 
+    public message: string,
+    public status: number = 0,
     public token?: PascalToken
   ) {
     super(message);

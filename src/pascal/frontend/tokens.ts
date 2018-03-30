@@ -1,8 +1,14 @@
 import { upperFirst, camelCase, flowRight as compose } from 'lodash';
 
-import { PascalTokenType, RESERVED_WORDS } from './token-type';
-import { PascalError, UnexpectedTokenError, UnexpectedEofError } from './errors';
+import { PascalTokenType, RESERVED_WORDS, SYMBOLS } from './token-type';
 import { Token, Source } from '../../framework/frontend';
+
+import {
+  PascalError,
+  UnexpectedTokenError,
+  UnexpectedEofError,
+  UnrecognizableError
+} from './errors';
 
 export const LETTER = /[a-z]/i;
 export const LETTER_OR_DIGIT = /(?:[a-z]|\d)+/i;
@@ -12,7 +18,7 @@ const pascalCase = compose<string, string, string>(upperFirst, camelCase);
 export class PascalToken<V = {}> extends Token<PascalTokenType, V> { }
 
 export class EofToken extends PascalToken {
-  protected async _extract(): Promise<this> { 
+  protected async _extract(): Promise<this> {
     this._text = Source.EOF;
     this._type = PascalTokenType.EndOfFile;
     return this;
@@ -25,15 +31,15 @@ export class PascalErrorToken extends PascalToken<PascalError> {
   }
 
   constructor(
-    _source: Source, 
-    protected _value: PascalError, 
+    _source: Source,
+    protected _value: PascalError,
     protected _text: string
   ) {
     super(_source);
     this._type = PascalTokenType.Error;
   }
 
-  protected async _extract(): Promise<this> { 
+  protected async _extract(): Promise<this> {
     return this;
   }
 }
@@ -53,13 +59,13 @@ export class PascalWordToken extends PascalToken {
     this._text = text;
     this._type = RESERVED_WORDS.find((v) => v === text.toUpperCase())
       || PascalTokenType.Identifier;
-    
+
     return this;
   }
 }
 
 export class PascalStringToken extends PascalToken<string> {
-  protected async _extract(): Promise<this> { 
+  protected async _extract(): Promise<this> {
     let currentCharacter = await this._currentCharacter();
     if (currentCharacter !== '\'') {
       throw new UnexpectedTokenError(this);
@@ -86,6 +92,40 @@ export class PascalStringToken extends PascalToken<string> {
     this._type = PascalTokenType.String;
     this._text = text;
     this._value = text.slice(1, -1);
+
+    return this;
+  }
+}
+
+export class PascalSymbolToken extends PascalToken {
+  protected async _extract(): Promise<this> {
+    const currentCharacter = await this._currentCharacter();
+    if (!SYMBOLS.find((v) => v.startsWith(currentCharacter))) {
+      throw new UnexpectedTokenError(this);
+    }
+
+    const twoCharacterSymbol = `${currentCharacter}${await this._nextCharacter()}`;
+    this._text = await (async () => {
+      switch (twoCharacterSymbol) {
+      case PascalTokenType.DotDot:
+      case PascalTokenType.ColonEquals:
+      case PascalTokenType.LessEquals:
+      case PascalTokenType.NotEquals:
+      case PascalTokenType.GreaterEquals:
+        await this._nextCharacter();
+        return twoCharacterSymbol;
+
+      default:
+        return currentCharacter;
+      }
+    })();
+
+    const type = SYMBOLS.find((v) => v === this._text);
+    if (!type) {
+      throw new UnrecognizableError(this);
+    }
+
+    this._type = type;
 
     return this;
   }
