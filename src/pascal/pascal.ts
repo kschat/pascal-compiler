@@ -7,18 +7,18 @@ import * as Table from 'cli-table2';
 import { BackendOperation, createBackend } from './backend/backend-factory';
 import { Backend } from '../framework/backend';
 import { Parser, Source } from '../framework/frontend';
-import { IntermediateCode, SymbolTable } from '../framework/intermediate';
+import { IntermediateCode, SymbolTableStack } from '../framework/intermediate';
 import { BufferedReader } from '../framework/utility';
 import { createParser, ParserLanguage, ParserType } from './frontend/frontend-factory';
 import { MessageType, MessageTypes } from '../framework/message/message-emitter';
 import { SyntaxErrorMessage } from '../framework/message/messages';
 
-import { 
-  ParserSummaryMessage, 
-  InterpreterSummaryMessage, 
-  CompilerSummaryMessage, 
-  SourceLineMessage, 
-  TokenMessage 
+import {
+  ParserSummaryMessage,
+  InterpreterSummaryMessage,
+  CompilerSummaryMessage,
+  SourceLineMessage,
+  TokenMessage
 } from '../framework/message/messages';
 
 const TABLE_CONFIG: Table.TableConstructorOptions = {
@@ -97,7 +97,7 @@ const formatToken = (message: TokenMessage) => {
   const config = merge({}, TABLE_CONFIG, { colWidths: [15, null] });
   const table = new Table(config) as Table.HorizontalTable;
   table.push([
-    `>>> ${message.tokenType}`, 
+    `>>> ${message.tokenType}`,
     `line=${message.lineNumber}, pos=${message.position}, text=${message.text}`
   ]);
 
@@ -120,6 +120,17 @@ const formatSyntaxError = (message: SyntaxErrorMessage) => {
   return String(table);
 };
 
+const crossReferenceTable = (symbolTableStack: SymbolTableStack) => {
+  const table = new Table({ head: [] }) as Table.HorizontalTable;
+  table.push([{ colSpan: 2, content: 'CROSS-REFERENCE TABLE' }])
+  table.push(['Identifier', 'Line numbers']);
+  symbolTableStack.localSymbolTable.sortedEntries.forEach((entry) => {
+    table.push([entry.name, entry.lineNumbers.join(',')]);
+  });
+
+  return String(table);
+};
+
 interface PascalFlags {
   readonly intermediate: boolean;
   readonly crossReference: boolean;
@@ -129,10 +140,10 @@ class Pascal {
   private _parser: Parser;
   private _source: Source;
   private _intermediateCode?: IntermediateCode;
-  private _symbolTable?: SymbolTable;
+  private _symbolTableStack: SymbolTableStack;
   private _backend: Backend;
 
-  constructor(operation: BackendOperation, path: string, flags: PascalFlags) {
+  constructor(operation: BackendOperation, path: string, private _flags: PascalFlags) {
     this._source = new Source(new BufferedReader(createReadStream(path)));
     this._source.addMessageListener(this._messageHandler);
 
@@ -147,8 +158,13 @@ class Pascal {
     await this._parser.parse();
     this._source.close();
     this._intermediateCode = this._parser.intermediateCode;
-    this._symbolTable = this._parser.symbolTable;
-    this._backend.process(this._intermediateCode as IntermediateCode, this._symbolTable as SymbolTable);
+    this._symbolTableStack = this._parser.symbolTableStack;
+
+    if (this._flags.crossReference) {
+      console.log(crossReferenceTable(this._symbolTableStack));
+    }
+
+    this._backend.process(this._intermediateCode as IntermediateCode, this._symbolTableStack);
   }
 
   private _messageHandler(message: MessageTypes): void {
@@ -164,7 +180,7 @@ class Pascal {
 
       case MessageType.CompilerSummary:
         return console.log(formatCompilerSummary(message));
-      
+
       case MessageType.Token:
         return console.log(formatToken(message));
 

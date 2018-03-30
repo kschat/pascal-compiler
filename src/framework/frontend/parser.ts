@@ -4,7 +4,7 @@ import { Scanner } from './scanner';
 import { Token } from './token';
 
 export abstract class Parser<T extends Token = Token> implements MessageEmitter {
-  protected static _symbolTableStack?: SymbolTableStack = createSymbolTableStack();
+  protected _symbolTableStack: SymbolTableStack = createSymbolTableStack();
   protected _messageHandler: MessageHandler = new MessageHandler();
   protected _intermediateCode?: IntermediateCode = undefined;
 
@@ -14,8 +14,8 @@ export abstract class Parser<T extends Token = Token> implements MessageEmitter 
     return this._intermediateCode;
   }
 
-  public get symbolTableStack(): SymbolTableStack | undefined {
-    return Parser._symbolTableStack;
+  public get symbolTableStack(): SymbolTableStack {
+    return this._symbolTableStack;
   }
 
   public abstract async parse(): Promise<void>;

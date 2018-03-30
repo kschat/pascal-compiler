@@ -1,9 +1,9 @@
 import { Backend } from '../../framework/backend';
-import { SymbolTable, IntermediateCode } from '../../framework/intermediate';
+import { SymbolTableStack, IntermediateCode } from '../../framework/intermediate';
 import { MessageType } from '../../framework/message/messages';
 
 class Executor extends Backend {
-  public process(iCode: IntermediateCode, symbolTable: SymbolTable): void {
+  public process(iCode: IntermediateCode, symbolTableStack: SymbolTableStack): void {
     this._TIMER.start();
     const executionCount = 0;
     const runtimeErrors = 0;

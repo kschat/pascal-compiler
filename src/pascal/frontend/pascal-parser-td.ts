@@ -5,6 +5,7 @@ import { EofToken, PascalToken, PascalErrorToken } from './tokens';
 import { PascalTokenType } from './token-type';
 import { PascalErrorHandler } from './error-handler';
 import { PascalError } from './errors';
+import { LookupScope } from '../../framework/intermediate';
 
 export class PascalParserTd extends Parser<PascalToken> {
   private readonly _TIMER = new PerformanceTimer();
@@ -15,23 +16,31 @@ export class PascalParserTd extends Parser<PascalToken> {
 
     let token: PascalToken;
     while (!((token = await this._tryNextToken()) instanceof EofToken)) {
-      const tokenType = token.type;
-      if (token instanceof PascalErrorToken) {
+      if (!(token instanceof PascalErrorToken)) {
+        this.sendMessage({
+          type: MessageType.Token,
+          tokenType: token.type,
+          lineNumber: token.lineNumber,
+          position: token.position,
+          text: token.text,
+          value: token.value
+        });
+      }
+      else {
         this._ERROR_HANDLER.flag(
           token,
           token.value,
           this
         );
       }
-      else {
-        this.sendMessage({
-          tokenType,
-          type: MessageType.Token,
-          lineNumber: token.lineNumber,
-          position: token.position,
-          text: token.text,
-          value: token.value
+
+      if (token.type === PascalTokenType.Identifier) {
+        const name = token.text.toLowerCase();
+        const symbolEntry = this.symbolTableStack.lookupOrEnter(name, {
+          scope: LookupScope.All
         });
+
+        symbolEntry.appendLineNumber(token.lineNumber);
       }
     }
 

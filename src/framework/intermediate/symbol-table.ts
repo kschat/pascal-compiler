@@ -1,11 +1,20 @@
-import { sortBy } from 'lodash';
+import { reduceRight, sortBy } from 'lodash';
+
+export const enum LookupScope {
+  Local,
+  All
+}
+
+interface LookupOptions {
+  readonly scope: LookupScope;
+}
 
 export interface SymbolTableStack {
   readonly currentNestingLevel: number;
   readonly localSymbolTable: SymbolTable;
   enterLocal(name: string): SymbolTableEntry;
-  lookupLocal(name: string): SymbolTableEntry | undefined;
-  lookup(name: string): SymbolTableEntry | undefined;
+  lookup(name: string, options?: LookupOptions): SymbolTableEntry | undefined;
+  lookupOrEnter(name: string, options?: LookupOptions): SymbolTableEntry;
 }
 
 export interface SymbolTable {
@@ -49,23 +58,18 @@ export class GenericSymbolTableStack implements SymbolTableStack {
     return this.localSymbolTable.enter(name);
   }
 
-  public lookupLocal(name: string): SymbolTableEntry | undefined {
-    return this.localSymbolTable.lookup(name);
-  }
-
-  // TODO provide better implementation
-  public lookup(name: string): SymbolTableEntry | undefined {
-    let nestingLevel = this.currentNestingLevel;
-    while (nestingLevel >= 0) {
-      const entry = this._stack[nestingLevel].lookup(name);
-      if (entry) {
-        return entry;
-      }
-
-      nestingLevel += 1;
+  public lookup(name: string, options: LookupOptions = { scope: LookupScope.Local }): SymbolTableEntry | undefined {
+    if (options.scope === LookupScope.Local) {
+      return this.localSymbolTable.lookup(name);
     }
 
-    return undefined;
+    return reduceRight(this._stack, (found, table) => {
+      return found = found || table.lookup(name);
+    }, undefined as SymbolTableEntry | undefined);
+  }
+
+  public lookupOrEnter(name: string, options: LookupOptions = { scope: LookupScope.Local }): SymbolTableEntry {
+    return this.lookup(name, options) || this.enterLocal(name);
   }
 }
 

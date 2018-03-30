@@ -10,6 +10,11 @@ BEGIN {hello}
         Hello, world
         ');
     END;
+
+    IF i THEN
+      writeln(i);
+    END;
+
 END {hello}.
 
 1
