@@ -1,17 +1,30 @@
-import { upperFirst, camelCase, flowRight as compose } from 'lodash';
+import {
+  flowRight as compose,
+  upperFirst,
+  camelCase,
+  reduce,
+  isSafeInteger,
+  isFinite
+} from 'lodash';
 
 import { PascalTokenType, RESERVED_WORDS, SYMBOLS } from './token-type';
 import { Token, Source } from '../../framework/frontend';
+import { RangeRealError } from './errors';
 
 import {
   PascalError,
   UnexpectedTokenError,
   UnexpectedEofError,
-  UnrecognizableError
+  UnrecognizableError,
+  InvalidNumberError,
+  RangeIntegerError
 } from './errors';
 
 export const LETTER = /[a-z]/i;
 export const LETTER_OR_DIGIT = /(?:[a-z]|\d)+/i;
+export const DIGIT = /[0-9]/;
+export const EXPONENT = /e/i;
+export const NUMBER_SIGN = /\+|\-/;
 
 const pascalCase = compose<string, string, string>(upperFirst, camelCase);
 
@@ -128,5 +141,121 @@ export class PascalSymbolToken extends PascalToken {
     this._type = type;
 
     return this;
+  }
+}
+
+export class PascalNumberToken extends PascalToken<number> {
+  // TODO clean up
+  protected async _extract(): Promise<this> {
+    let currentCharacter = await this._currentCharacter();
+    if (!DIGIT.test(currentCharacter)) {
+      throw new UnexpectedTokenError(this);
+    }
+
+    let wholeDigits = '';
+    let fractionDigits = '';
+    let exponentDigits = '';
+    let sign = '+';
+
+    let text = wholeDigits = await this._extractUnsignedInteger();
+    let type = PascalTokenType.Integer;
+
+    currentCharacter = await this._currentCharacter();
+    if (currentCharacter === '.') {
+      const nextCharacter = await this._peekCharacter();
+      if (nextCharacter === '.') {
+        this._type = type;
+        this._text = text;
+        this._value = this._computeIntegerValue(this._text);
+        return this;
+      }
+
+      if (DIGIT.test(nextCharacter)) {
+        await this._nextCharacter();
+        type = PascalTokenType.Real;
+        fractionDigits = await this._extractUnsignedInteger();
+        text += `.${fractionDigits}`;
+        currentCharacter = await this._currentCharacter();
+      }
+    }
+
+    if (EXPONENT.test(currentCharacter)) {
+      type = PascalTokenType.Real;
+      text += currentCharacter;
+
+      currentCharacter = await this._nextCharacter();
+      if (NUMBER_SIGN.test(currentCharacter)) {
+        text += sign = currentCharacter;
+        currentCharacter = await this._nextCharacter();
+      }
+
+      if (!DIGIT.test(currentCharacter)) {
+        throw new InvalidNumberError(this);
+      }
+
+      text += exponentDigits = await this._extractUnsignedInteger();
+    }
+
+    this._type = type;
+    this._text = text;
+    this._value = this._type === PascalTokenType.Real
+      ? this._computeFloatValue(wholeDigits, fractionDigits, exponentDigits, sign)
+      : this._computeIntegerValue(this._text);
+
+    return this;
+  }
+
+  private async _extractUnsignedInteger(): Promise<string> {
+    let currentCharacter = await this._currentCharacter();
+    let unsignedInteger = currentCharacter;
+
+    while (DIGIT.test(currentCharacter = await this._nextCharacter())) {
+      unsignedInteger += currentCharacter;
+    }
+
+    return unsignedInteger;
+  }
+
+  private _computeIntegerValue(digits: string): number {
+    const integerValue = reduce(digits, (acc, digit) => {
+      return 10 * acc + Number(digit);
+    }, 0);
+
+    if (!isSafeInteger(integerValue)) {
+      throw new RangeIntegerError(this);
+    }
+
+    return integerValue;
+  }
+
+  private _computeFloatValue(
+    wholeDigits: string,
+    fractionDigits: string,
+    exponentDigits: string,
+    sign: string
+  ): number {
+    let digits = wholeDigits;
+    let exponentValue = this._computeIntegerValue(exponentDigits);
+    if (sign === '-') {
+      exponentValue = -exponentValue;
+    }
+
+    exponentValue -= fractionDigits.length;
+    digits += fractionDigits;
+
+    let floatValue = reduce(digits, (acc, digit) => {
+      return 10 * acc + Number(digit);
+    }, 0);
+
+    if (exponentValue !== 0) {
+      floatValue *= Math.pow(10, exponentValue);
+    }
+
+    // TODO properly detect over/under flow
+    if (!isFinite(floatValue)) {
+      throw new RangeRealError(this);
+    }
+
+    return floatValue;
   }
 }

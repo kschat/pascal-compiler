@@ -4,19 +4,20 @@ import { SYMBOLS } from './token-type';
 
 import {
   LETTER,
+  DIGIT,
   PascalWordToken,
   PascalToken,
   EofToken,
   PascalStringToken,
   PascalErrorToken,
-  PascalSymbolToken
+  PascalSymbolToken,
+  PascalNumberToken
 } from './tokens';
 
 const WHITESPACE = /\s/;
 
 export class PascalScanner extends Scanner<PascalToken> {
-  // TODO find better work around
-  protected async _extractToken(): Promise<PascalToken<any>> {
+  protected async _extractToken(): Promise<PascalToken> {
     const currentCharacter = await this._skipWhitespaceAndComments();
     if (currentCharacter === Source.EOF) {
       return await new EofToken(this._source).build();
@@ -29,6 +30,9 @@ export class PascalScanner extends Scanner<PascalToken> {
     }
     else if (SYMBOLS.find((v) => v.startsWith(currentCharacter))) {
       return await new PascalSymbolToken(this._source).build();
+    }
+    else if (DIGIT.test(currentCharacter)) {
+      return await new PascalNumberToken(this._source).build();
     }
 
     await this.nextCharacter();
