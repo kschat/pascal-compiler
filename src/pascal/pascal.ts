@@ -155,10 +155,9 @@ class Pascal {
   }
 
   public async run(): Promise<void> {
-    await this._parser.parse();
-    this._source.close();
-    this._intermediateCode = this._parser.intermediateCode;
+    this._intermediateCode = await this._parser.parse();
     this._symbolTableStack = this._parser.symbolTableStack;
+    this._source.close();
 
     if (this._flags.crossReference) {
       console.log(crossReferenceTable(this._symbolTableStack));

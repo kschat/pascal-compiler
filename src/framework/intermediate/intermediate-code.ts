@@ -18,6 +18,7 @@ export enum IntermediateCodeKey {
   Line = 'LINE',
   Id = 'ID',
   Value = 'VALUE',
+  Name = 'NAME',
 }
 
 export enum GenericIntermediateCodeType {
