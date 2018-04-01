@@ -4,7 +4,6 @@ import { PerformanceTimer } from '../../framework/utility';
 import { EofToken, PascalToken, PascalErrorToken } from './tokens';
 import { PascalTokenType } from './token-type';
 import { PascalErrorHandler } from './error-handler';
-
 import {
   PascalError,
   UnexpectedTokenError,
@@ -12,7 +11,10 @@ import {
   MissingBeginError,
   MissingEndError,
   MissingIdentifierError,
-  MissingColonEqualsError
+  MissingColonEqualsError,
+  MissingRightParenError,
+  MissingSemicolonError,
+  UnexpectedEofError
 } from './errors';
 
 import {
@@ -84,15 +86,6 @@ export class PascalParserTd extends Parser<PascalToken> {
       });
     }
 
-    if (token.type === PascalTokenType.Identifier) {
-      const name = token.text.toLowerCase();
-      const symbolEntry = this.symbolTableStack.lookupOrEnter(name, {
-        scope: LookupScope.All
-      });
-
-      symbolEntry.appendLineNumber(token.lineNumber);
-    }
-
     return token;
   }
 }
@@ -101,27 +94,42 @@ export class StatementParser extends PascalParserTd {
   public async parseNode(): Promise<IntermediateCodeNode> {
     const token = this.currentToken();
 
-    switch (token.type) {
-    case PascalTokenType.Begin:
-      return await new CompoundStatementParser(this._scanner).parseNode();
+    const statementNode = await (async () => {
+      switch (token.type) {
+      case PascalTokenType.Begin:
+        return await new CompoundStatementParser(this._scanner).parseNode();
 
-    case PascalTokenType.Identifier:
-      return await new AssignmentStatementParser(this._scanner).parseNode();
+      case PascalTokenType.Identifier:
+        return await new AssignmentStatementParser(this._scanner).parseNode();
 
-    default:
-      await this._tryNextToken();
-      return createIntermediateCodeNode(ICodeType.Noop);
-    }
+      default:
+        await this._tryNextToken();
+        return createIntermediateCodeNode(ICodeType.Noop);
+      }
+    })();
+
+    statementNode.setAttribute(IntermediateCodeKey.Line, token.lineNumber);
+    return statementNode;
   }
 
-  public async parseList(): Promise<IntermediateCodeNode[]> {
+  public async parseList(terminator: PascalTokenType): Promise<IntermediateCodeNode[]> {
     let list = [await this.parseNode()];
     let token = this.currentToken();
 
-    while (token.type === PascalTokenType.Semicolon) {
-      await this._tryNextToken();
-      list = list.concat(await this.parseList());
+    while (token.type !== terminator && token.type !== PascalTokenType.EndOfFile) {
+      if (token.type === PascalTokenType.Semicolon) {
+        await this._tryNextToken();
+      }
+      else {
+        this._ERROR_HANDLER.flag(token, new MissingSemicolonError(), this);
+      }
+
+      list = list.concat(await this.parseNode());
       token = this.currentToken();
+    }
+
+    if (token.type === PascalTokenType.EndOfFile) {
+      this._ERROR_HANDLER.flag(token, new UnexpectedEofError(), this);
     }
 
     return list;
@@ -137,7 +145,7 @@ export class CompoundStatementParser extends PascalParserTd {
     }
 
     await this._tryNextToken();
-    const children = await new StatementParser(this._scanner).parseList();
+    const children = await new StatementParser(this._scanner).parseList(PascalTokenType.End);
     children.forEach((child) => node.addChild(child));
 
     token = this.currentToken();
@@ -160,12 +168,18 @@ export class AssignmentStatementParser extends PascalParserTd {
       this._ERROR_HANDLER.flag(token, new MissingIdentifierError(), this);
     }
 
+    const symbolEntry = this.symbolTableStack.lookupOrEnter(token.text.toLowerCase());
+    symbolEntry.appendLineNumber(token.lineNumber);
+
     const varNode = createIntermediateCodeNode(ICodeType.Variable);
-    varNode.setAttribute(IntermediateCodeKey.Name, token.text);
+    varNode.setAttribute(IntermediateCodeKey.Id, symbolEntry);
     node.addChild(varNode);
 
     token = await this._tryNextToken();
-    if (token.type !== PascalTokenType.ColonEquals) {
+    if (token.type === PascalTokenType.ColonEquals) {
+      await this._tryNextToken();
+    }
+    else {
       this._ERROR_HANDLER.flag(token, new MissingColonEqualsError(), this);
     }
 
@@ -176,10 +190,172 @@ export class AssignmentStatementParser extends PascalParserTd {
   }
 }
 
-// TODO implement expression parsing
 export class ExpressionParser extends PascalParserTd {
   public async parseNode(): Promise<IntermediateCodeNode> {
-    while ((await this._tryNextToken()).type !== PascalTokenType.Semicolon) { }
-    return createIntermediateCodeNode(ICodeType.Noop);
+    const simpleExpressionParser = new SimpleExpressionParser(this._scanner);
+    const simpleExpressionNode = await simpleExpressionParser.parseNode();
+    let operatorType = this._extractOperatorType(this.currentToken());
+
+    if (!operatorType) {
+      return simpleExpressionNode;
+    }
+
+    await this._tryNextToken();
+    const expressionNode = createIntermediateCodeNode(operatorType);
+    expressionNode.addChild(simpleExpressionNode);
+    expressionNode.addChild(await simpleExpressionParser.parseNode());
+
+    return expressionNode;
+  }
+
+  private _extractOperatorType(token: PascalToken) {
+    switch (token.type) {
+    case PascalTokenType.Equals: return ICodeType.Eq;
+    case PascalTokenType.NotEquals: return ICodeType.Ne;
+    case PascalTokenType.LessThan: return ICodeType.Lt;
+    case PascalTokenType.LessEquals: return ICodeType.Le;
+    case PascalTokenType.GreaterThan: return ICodeType.Gt;
+    case PascalTokenType.GreaterEquals: return ICodeType.Ge;
+    default: return undefined;
+    }
+  }
+}
+
+export class SimpleExpressionParser extends PascalParserTd {
+  public async parseNode(): Promise<IntermediateCodeNode> {
+    const leadingSign = this._extractLeadingSign(this.currentToken());
+    if (leadingSign) {
+      await this._tryNextToken();
+    }
+
+    const termParser = new TermParser(this._scanner);
+    const termNode = await termParser.parseNode();
+
+    let operatorType = this._extractOperatorType(this.currentToken());
+    if (!operatorType) {
+      return termNode;
+    }
+
+    await this._tryNextToken();
+    let simpleExpressionNode = createIntermediateCodeNode(operatorType);
+    simpleExpressionNode.addChild(termNode);
+    simpleExpressionNode.addChild(await termParser.parseNode());
+
+    while (operatorType = this._extractOperatorType(this.currentToken())) {
+      const temp = simpleExpressionNode;
+      await this._tryNextToken();
+
+      simpleExpressionNode = createIntermediateCodeNode(operatorType);
+      simpleExpressionNode.addChild(temp);
+      simpleExpressionNode.addChild(await termParser.parseNode());
+    }
+
+    return simpleExpressionNode;
+  }
+
+  private _extractOperatorType(token: PascalToken) {
+    switch (token.type) {
+    case PascalTokenType.Plus: return ICodeType.Add;
+    case PascalTokenType.Minus: return ICodeType.Subtract;
+    case PascalTokenType.Or: return ICodeType.Or;
+    default: return undefined;
+    }
+  }
+
+  private _extractLeadingSign(token: PascalToken) {
+    switch (token.type) {
+    case PascalTokenType.Plus: return ICodeType.Add;
+    case PascalTokenType.Minus: return ICodeType.Subtract;
+    default: return undefined;
+    }
+  }
+}
+
+export class TermParser extends PascalParserTd {
+  public async parseNode(): Promise<IntermediateCodeNode> {
+    const factorParser = new FactorParser(this._scanner);
+    const factorNode = await factorParser.parseNode();
+    let operatorType = this._extractOperatorType(this.currentToken());
+
+    if (!operatorType) {
+      return factorNode;
+    }
+
+    await this._tryNextToken();
+    let termNode = createIntermediateCodeNode(operatorType);
+    termNode.addChild(factorNode);
+    termNode.addChild(await factorParser.parseNode());
+
+    while (operatorType = this._extractOperatorType(this.currentToken())) {
+      const temp = termNode;
+      await this._tryNextToken();
+
+      termNode = createIntermediateCodeNode(operatorType);
+      termNode.addChild(temp);
+      termNode.addChild(await factorParser.parseNode());
+    }
+
+    return termNode;
+  }
+
+  private _extractOperatorType(token: PascalToken) {
+    switch (token.type) {
+    case PascalTokenType.Star: return ICodeType.Multiply;
+    case PascalTokenType.Slash: return ICodeType.FloatDivide;
+    case PascalTokenType.Div: return ICodeType.IntegerDivide;
+    case PascalTokenType.Mod: return ICodeType.Mod;
+    case PascalTokenType.And: return ICodeType.And;
+    default: return undefined;
+    }
+  }
+}
+
+export class FactorParser extends PascalParserTd {
+  public async parseNode(): Promise<IntermediateCodeNode> {
+    let node = createIntermediateCodeNode(ICodeType.Noop);
+    const token = this.currentToken();
+
+    switch (token.type) {
+    case PascalTokenType.Identifier:
+      node = createIntermediateCodeNode(ICodeType.Variable);
+      node.setAttribute(IntermediateCodeKey.Name, token.text);
+      break;
+
+    case PascalTokenType.Integer:
+      node = createIntermediateCodeNode(ICodeType.IntegerConstant);
+      node.setAttribute(IntermediateCodeKey.Value, token.value);
+      break;
+
+    case PascalTokenType.Real:
+      node = createIntermediateCodeNode(ICodeType.RealConstant);
+      node.setAttribute(IntermediateCodeKey.Value, token.value);
+      break;
+
+    case PascalTokenType.String:
+      node = createIntermediateCodeNode(ICodeType.StringConstant);
+      node.setAttribute(IntermediateCodeKey.Value, token.value);
+      break;
+
+    case PascalTokenType.Not:
+      await this._tryNextToken();
+      node = createIntermediateCodeNode(ICodeType.Not);
+      node.addChild(await this.parseNode());
+      break;
+
+    case PascalTokenType.LeftParen:
+      await this._tryNextToken();
+      node = await new ExpressionParser(this._scanner).parseNode();
+      if (this.currentToken().type !== PascalTokenType.RightParen) {
+        this._ERROR_HANDLER.flag(token, new MissingRightParenError(), this);
+      }
+      break;
+
+    default:
+      this._ERROR_HANDLER.flag(token, new UnexpectedTokenError(), this);
+      break;
+    }
+
+    await this._tryNextToken();
+    return node;
   }
 }
